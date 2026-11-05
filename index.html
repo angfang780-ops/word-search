@@ -1,0 +1,481 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<title>숨은 단어 찾기</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#151D2B">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="단어 찾기">
+<link rel="manifest" href="app.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Do+Hyeon&family=IBM+Plex+Sans+KR:wght@400;500;700&display=swap">
+<style>
+  [hidden]{display:none!important}
+  html{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+  :root{
+    color-scheme: dark;
+    --felt:#1F2A3C;
+    --felt-deep:#151D2B;
+    --bar:#101724;
+    --ink:#ECE5D3;
+    --ink-dim:#A3AEC2;
+    --brass:#D8A445;
+    --brass-ink:#2A1D06;
+    --line:rgba(236,229,211,.14);
+    --chip:rgba(236,229,211,.06);
+    --paper:#FBF6EA;
+    --type:#1D1A16;
+  }
+  html{box-sizing:border-box;height:100%}
+  *,*::before,*::after{box-sizing:inherit}
+  body{
+    height:100%;margin:0;overflow:hidden;overscroll-behavior:none;
+    background:var(--felt-deep);color:var(--ink);
+    font:400 15px/1.4 "IBM Plex Sans KR",system-ui,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+    -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent;
+  }
+  .app{position:relative;height:100%}
+  /* 화면이 세로면 게임 화면 전체를 90도 돌려 세로 화면을 꽉 채운다 — 태블릿을 옆으로 돌려 들면 가로 화면처럼 보임 (자동회전 꺼도 됨) */
+  @media (orientation:portrait){
+    .app{position:fixed;top:0;left:100vw;width:100vh;height:100vw;transform-origin:0 0;transform:rotate(90deg)}
+  }
+  .btn{
+    display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:58px;padding:0 18px;
+    border-radius:12px;border:1px solid var(--line);background:var(--chip);color:var(--ink);
+    font-family:inherit;font-size:19px;font-weight:500;line-height:1.2;cursor:pointer;touch-action:manipulation;white-space:nowrap;
+  }
+  .btn:focus-visible{outline:3px solid var(--brass);outline-offset:2px}
+  .btn.primary{background:var(--brass);color:var(--brass-ink);border-color:transparent;font-weight:700}
+  .btn[aria-pressed="true"]{background:rgba(216,164,69,.16);border-color:var(--brass);color:var(--brass)}
+  .seg{display:flex;align-items:center;gap:6px}
+  .seg .btn{flex:1 1 0;min-width:0;padding:0 4px;font-size:18px}
+  .seg .btn[aria-pressed="true"]{background:var(--brass);color:var(--brass-ink);border-color:transparent;font-weight:700}
+  .stage{position:absolute;inset:0;background:var(--felt)}
+
+  /* 위: 문제 번호 · 할 일 */
+  .qbar{position:absolute;left:16px;top:12px;right:calc(var(--sp) + 16px);display:flex;align-items:center;gap:14px;min-height:54px}
+  .qno{flex:none;padding:6px 14px;border-radius:12px;background:var(--brass);color:var(--brass-ink);font-size:22px;font-weight:700;font-variant-numeric:tabular-nums}
+  .ask{font-size:22px;font-weight:700;line-height:1.25}
+  .ask b{color:var(--brass)}
+
+  /* 글자판 */
+  .board{position:absolute;background:var(--paper);border:4px solid #2C2620;border-radius:10px;box-shadow:0 14px 34px rgba(0,0,0,.45);touch-action:none;overflow:hidden}
+  .bands{position:absolute;inset:0;z-index:1;pointer-events:none}
+  .band{position:absolute;border-radius:999px;opacity:.55}
+  .cells{position:absolute;inset:0;z-index:2;display:grid}
+  .cell{
+    display:grid;place-items:center;border-right:2px solid #3A332B;border-bottom:2px solid #3A332B;
+    color:var(--type);font-weight:700;font-size:calc(var(--cs)*.6);line-height:1;cursor:pointer;
+  }
+  .cell.lastc{border-right:0}
+  .cell.lastr{border-bottom:0}
+  .cell.sel{background:rgba(216,164,69,.55);box-shadow:inset 0 0 0 4px #B9832A}
+  .cell.path{background:rgba(216,164,69,.3)}
+  .cell.wrong{background:rgba(194,90,69,.45)}
+  .cell.flash{animation:flash .9s ease-in-out 4}
+  @keyframes flash{50%{background:rgba(255,214,110,.95)}}
+  @media (prefers-reduced-motion:reduce){ .cell.flash{animation:none;background:rgba(255,214,110,.9)} }
+
+  /* 오른쪽: 설정 · 찾을 낱말 · 힌트 */
+  .side{position:absolute;top:0;right:0;bottom:0;width:var(--sp);display:flex;flex-direction:column;gap:12px;padding:12px;background:var(--bar);border-left:1px solid var(--line)}
+  .gear{min-height:54px;font-size:20px;font-weight:700;background:var(--brass);color:var(--brass-ink);border-color:transparent;box-shadow:0 4px 14px rgba(0,0,0,.45)}
+  .words{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;gap:10px;justify-content:center}
+  .words h4{margin:0;color:var(--ink-dim);font-size:17px;font-weight:500;text-align:center}
+  .word{display:flex;justify-content:center;gap:5px}
+  .word i{
+    display:grid;place-items:center;width:var(--ws);height:var(--ws);border-radius:8px;border:2px dashed rgba(236,229,211,.35);
+    font-style:normal;font-weight:700;font-size:calc(var(--ws)*.62);color:var(--ink)
+  }
+  .word.show i{border-style:solid;border-color:rgba(236,229,211,.35)}
+  .word.ok i{border-color:transparent;background:var(--c);color:#1D1A16}
+  .count{text-align:center;color:var(--ink-dim);font-size:16px}
+  .count b{color:var(--brass);font-size:20px}
+  .hintb{min-height:60px;font-size:21px;font-weight:700;background:var(--brass);color:var(--brass-ink);border-color:transparent}
+
+  .cheer{position:absolute;left:calc((100% - var(--sp))/2);top:50%;transform:translate(-50%,-50%);z-index:3;pointer-events:none;white-space:nowrap;
+    padding:14px 36px;border-radius:22px;background:rgba(16,23,36,.93);border:2px solid var(--brass);box-shadow:0 14px 40px rgba(0,0,0,.5);
+    font-family:"Do Hyeon","IBM Plex Sans KR",sans-serif;font-size:60px;line-height:1.1;color:var(--brass)}
+  .veil{position:absolute;inset:0;display:grid;place-items:center;padding:16px;background:rgba(8,12,20,.55);overflow:auto;z-index:4}
+  .card{
+    width:min(100%,460px);padding:26px 24px 24px;border-radius:18px;
+    background:var(--bar);border:1px solid var(--line);box-shadow:0 20px 50px rgba(0,0,0,.5);
+    display:flex;flex-direction:column;gap:18px
+  }
+  .card h2{margin:0;font-family:"Do Hyeon","IBM Plex Sans KR",sans-serif;font-weight:400;font-size:44px;line-height:1;color:var(--brass)}
+  .card h3{margin:0;font-family:"Do Hyeon","IBM Plex Sans KR",sans-serif;font-weight:400;font-size:30px;line-height:1;color:var(--brass)}
+  .card .big{margin:0;font-size:24px;font-weight:700}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .grid2 .wide{grid-column:1 / -1}
+  .note{margin:0;color:var(--ink-dim);font-size:15px}
+</style>
+</head>
+<body>
+
+<div class="app">
+  <main class="stage" id="stage">
+    <div class="qbar">
+      <span class="qno"><span id="qNo">1</span> / <span id="qT">5</span></span>
+      <span class="ask" id="ask"></span>
+    </div>
+    <div class="board" id="board" role="grid" aria-label="글자판">
+      <div class="bands" id="bands"></div>
+      <div class="cells" id="cells"></div>
+    </div>
+    <aside class="side" id="side">
+      <button id="gear" class="btn gear" type="button">설정</button>
+      <div class="words" id="words" aria-live="polite"></div>
+      <div class="count">찾은 낱말 <b id="cnt">0/3</b></div>
+      <button id="hint" class="btn hintb" type="button">힌트</button>
+    </aside>
+    <div class="cheer" id="cheer" hidden>잘하셨어요!</div>
+
+    <div class="veil" id="menu" hidden>
+      <div class="card" role="dialog" aria-label="설정">
+        <h3>설정</h3>
+        <div class="grid2">
+          <div id="level" class="seg wide" role="group" aria-label="난이도">
+            <button class="btn" type="button" data-v="1" aria-pressed="true">쉬움</button>
+            <button class="btn" type="button" data-v="2" aria-pressed="false">보통</button>
+            <button class="btn" type="button" data-v="3" aria-pressed="false">어려움</button>
+          </div>
+          <button id="sound" class="btn" type="button" aria-pressed="true">소리</button>
+          <button id="again" class="btn" type="button">새 문제로</button>
+          <button id="full" class="btn wide" type="button">전체 화면</button>
+        </div>
+        <p class="note">첫 글자와 마지막 글자를 차례로 누르면 낱말이 골라져요(손가락으로 쭉 그어도 돼요). 쉬움은 찾을 낱말이 보이고 가로·세로만, 보통은 대각선도, 어려움은 판이 크고 거꾸로 읽는 낱말도 있어요.</p>
+        <p class="note">버전 11월 5일</p>
+        <button id="menuClose" class="btn primary" type="button">닫고 하기</button>
+      </div>
+    </div>
+
+    <div class="veil" id="done" hidden>
+      <div class="card">
+        <h2>다 찾으셨어요!</h2>
+        <p class="big" id="dScore"></p>
+        <button id="doneAgain" class="btn primary" type="button">한 번 더 하기</button>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+(() => {
+  const $ = s => document.querySelector(s);
+  const stage = $('#stage'), board = $('#board'), cellsEl = $('#cells'), bandsEl = $('#bands');
+  const PREFS = 'word.prefs', KEY = 'word.game';
+
+  // 귀에 익은 세 글자·네 글자 낱말
+  const WORDS = (`고구마 옥수수 바나나 토마토 복숭아 오렌지 비빔밥 떡볶이 미역국 된장국 칼국수 만둣국 붕어빵 감자전 호박죽
+    수정과 인절미 시루떡 가래떡 누룽지 보리차 딸기잼 삼계탕 불고기 갈비탕 설렁탕 물냉면 짜장면 탕수육 콩나물 시금치 고사리 도라지
+    깍두기 동치미 고등어 오징어 김치전 호두과자 군고구마 잔치국수 총각김치 배추김치 생선구이 갈치조림
+    무궁화 진달래 개나리 민들레 나팔꽃 봉선화 채송화 백일홍 소나무 대나무 무지개 소나기 눈사람 바닷가 시냇물 보름달 초승달 별자리
+    해바라기 코스모스 은행나무 느티나무 단풍나무 산딸기 들국화 장미꽃
+    고양이 강아지 호랑이 코끼리 원숭이 다람쥐 거북이 기러기 두루미 병아리 송아지 망아지 너구리 개구리 올챙이 잠자리 메뚜기 달팽이
+    고슴도치 귀뚜라미 반딧불이 무당벌레 까마귀 앵무새 부엉이 독수리 공작새 돌고래 얼룩말 비둘기 갈매기
+    냉장고 세탁기 전화기 선풍기 라디오 주전자 숟가락 젓가락 도시락 빨랫줄 다리미 재봉틀 장독대 항아리 아궁이 부뚜막 툇마루 창호지
+    문고리 바구니 소쿠리 빗자루 텔레비전 전기밥솥 쓰레받기 대청마루 손거울 벽시계 돋보기 손수건 화장대
+    할머니 할아버지 어머니 아버지 며느리 이모부 고모부 외삼촌 큰아버지 선생님 간호사 경찰관 소방관 우체부 큰어머니
+    운동장 놀이터 우체국 기차역 미용실 목욕탕 정미소 방앗간 대장간 시골집 초가집 기와집 정자나무
+    자전거 비행기 자동차 경운기 트랙터 손수레 오토바이 기찻길 유람선 고깃배 돛단배
+    한가위 세뱃돈 윷놀이 줄넘기 고무줄 널뛰기 제기차기 연날리기 팽이치기 술래잡기 공기놀이 숨바꼭질 소꿉놀이 강강술래
+    고무신 저고리 두루마기 아리랑 태극기 애국가 신문지 편지지 지우개 색연필 책가방 운동화 크레파스 연필깎이
+    도라지꽃 김장날 꽃게탕 호박꽃 감나무 밤나무 대추나무 참깨밭 보리밭 논두렁 허수아비 원두막 우물가 빨래터`)
+    .split(/\s+/).filter(w => w.length >= 3 && w.length <= 4);
+  const WSET = new Set(WORDS);
+  // 빈칸 채울 글자: 낱말에 나오는 글자들 (그럴듯해 보이게)
+  const FILL = [...new Set(WORDS.join(''))];
+  const DIR8 = [[0,1],[1,0],[1,1],[-1,1],[0,-1],[-1,0],[-1,-1],[1,-1]];
+  const LEVELS = {
+    1: { cols: 5, rows: 4, n: 3, lens: [3], dirs: [[0,1],[1,0]], show: true },
+    2: { cols: 6, rows: 4, n: 3, lens: [3, 4], dirs: [[0,1],[1,0],[1,1],[-1,1]], show: false },
+    3: { cols: 7, rows: 5, n: 4, lens: [3, 4], dirs: DIR8, show: false }
+  };
+  const ROUND_N = 5;
+  const BAND = ['#F2C14E', '#7FC8A9', '#F49FB6', '#8AB6F0', '#C9A2E8'];
+
+  const store = {
+    get(k){ try { return localStorage.getItem(k); } catch(e){ return null; } },
+    set(k,v){ try { localStorage.setItem(k,v); } catch(e){} }
+  };
+  let prefs = { level: 1, sound: true };
+  try { Object.assign(prefs, JSON.parse(store.get(PREFS) || '{}')); } catch(e){}
+  if (!LEVELS[prefs.level]) prefs.level = 1;
+  const savePrefs = () => store.set(PREFS, JSON.stringify(prefs));
+  const pick = a => a[Math.floor(Math.random()*a.length)];
+  const shuffle = a => { for (let i = a.length - 1; i > 0; i--){ const j = Math.floor(Math.random()*(i+1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+
+  // ---------- 문제 만들기 ----------
+  // 낱말을 숨기고 남은 칸을 채운 뒤, 숨긴 낱말이 딱 한 번씩만 있고 다른 낱말은 우연히 생기지 않았는지 확인한다
+  function makePuzzle(level){
+    const L = LEVELS[level];
+    for (let tries = 0; tries < 400; tries++){
+      const g = Array(L.rows*L.cols).fill(''), placed = [];
+      const pool = shuffle(WORDS.filter(w => L.lens.includes(w.length)));
+      for (const w of pool){
+        if (placed.length >= L.n) break;
+        if (placed.some(p => p.w === w || p.w.includes(w) || w.includes(p.w))) continue;
+        const spots = [];
+        for (const [dr, dc] of L.dirs) for (let r = 0; r < L.rows; r++) for (let c = 0; c < L.cols; c++){
+          const er = r + dr*(w.length - 1), ec = c + dc*(w.length - 1);
+          if (er < 0 || er >= L.rows || ec < 0 || ec >= L.cols) continue;
+          let ok = true;
+          for (let k = 0; k < w.length; k++){ const v = g[(r + dr*k)*L.cols + c + dc*k]; if (v && v !== w[k]){ ok = false; break; } }
+          if (ok) spots.push([r, c, dr, dc]);
+        }
+        if (!spots.length) continue;
+        const [r, c, dr, dc] = pick(spots), cells = [];
+        for (let k = 0; k < w.length; k++){ const i = (r + dr*k)*L.cols + c + dc*k; g[i] = w[k]; cells.push(i); }
+        placed.push({ w, cells });
+      }
+      if (placed.length < L.n) continue;
+      for (let i = 0; i < g.length; i++) if (!g[i]) g[i] = pick(FILL);
+      if (check(g, L, placed)) return { level, cols: L.cols, rows: L.rows, grid: g, words: placed.map(p => ({ w: p.w, cells: p.cells, found: false })) };
+    }
+    return null;
+  }
+  function check(g, L, placed){
+    const seen = new Map();
+    for (const [dr, dc] of DIR8) for (let r = 0; r < L.rows; r++) for (let c = 0; c < L.cols; c++){
+      let s = '';
+      for (let k = 0; k < 4; k++){
+        const rr = r + dr*k, cc = c + dc*k; if (rr < 0 || rr >= L.rows || cc < 0 || cc >= L.cols) break;
+        s += g[rr*L.cols + cc];
+        if (k >= 2 && WSET.has(s)) seen.set(s, (seen.get(s) || 0) + 1);
+      }
+    }
+    const want = new Set(placed.map(p => p.w));
+    for (const [w, n] of seen) if (!want.has(w) || n > 1) return false;
+    return placed.every(p => seen.get(p.w) === 1);
+  }
+
+  // ---------- 한 판 ----------
+  let G = null;   // { at, hints, pz, hint: { w, step } }
+  let anchor = -1;
+  function newRound(){
+    G = { at: 1, hints: 0, pz: makePuzzle(prefs.level) };
+    $('#done').hidden = true; $('#menu').hidden = true;
+    show(); save();
+  }
+  function nextProblem(){
+    if (G.at >= ROUND_N){ finish(); return; }
+    G.at++; G.pz = makePuzzle(prefs.level); G.hint = null;
+    show(); save();
+  }
+  function finish(){
+    [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => beep(f, .18), i*110));
+    $('#dScore').textContent = G.hints ? `${ROUND_N}문제를 다 풀었어요. 힌트는 ${G.hints}번 썼어요.` : `${ROUND_N}문제를 힌트 없이 다 풀었어요!`;
+    $('#done').hidden = false;
+    G.over = true; save();
+  }
+  function show(){
+    const pz = G.pz, L = LEVELS[pz.level];
+    anchor = -1;
+    $('#qNo').textContent = G.at; $('#qT').textContent = ROUND_N;
+    $('#ask').innerHTML = `${L.dirs.length > 2 ? '가로·세로·대각선' : '가로·세로'}으로 숨은 낱말 <b>${pz.words.length}개</b>를 찾아보세요`;
+    cellsEl.textContent = '';
+    cellsEl.style.gridTemplateColumns = `repeat(${pz.cols}, 1fr)`;
+    pz.grid.forEach((ch, i) => {
+      const d = document.createElement('div');
+      d.className = 'cell' + (i % pz.cols === pz.cols - 1 ? ' lastc' : '') + (i >= (pz.rows - 1)*pz.cols ? ' lastr' : '');
+      d.dataset.i = i; d.textContent = ch; d.setAttribute('role', 'gridcell');
+      cellsEl.appendChild(d);
+    });
+    syncWords();
+    layout();
+  }
+  function syncWords(){
+    const pz = G.pz, L = LEVELS[pz.level], box = $('#words');
+    box.innerHTML = '<h4>찾을 낱말</h4>';
+    pz.words.forEach((w, k) => {
+      const row = document.createElement('div');
+      const open = w.found || L.show || (G.hint && G.hint.w === k && G.hint.step >= 2);
+      row.className = 'word' + (w.found ? ' ok' : open ? ' show' : '');
+      row.style.setProperty('--c', BAND[k % BAND.length]);
+      row.innerHTML = [...w.w].map(ch => `<i>${open ? ch : ''}</i>`).join('');
+      row.setAttribute('aria-label', open ? w.w + (w.found ? ' 찾음' : '') : w.w.length + '글자 낱말');
+      box.appendChild(row);
+    });
+    $('#cnt').textContent = `${pz.words.filter(w => w.found).length}/${pz.words.length}`;
+    drawBands();
+  }
+
+  // ---------- 고르기: 첫 글자 → 마지막 글자 (탭 두 번이나 쭉 긋기) ----------
+  const cellAt = (x, y) => { const el = document.elementFromPoint(x, y); const c = el && el.closest && el.closest('.cell'); return c && cellsEl.contains(c) ? +c.dataset.i : -1; };
+  function lineCells(a, b){
+    const C = G.pz.cols, ar = Math.floor(a/C), ac = a % C, br = Math.floor(b/C), bc = b % C;
+    const dr = br - ar, dc = bc - ac;
+    if (!(dr === 0 || dc === 0 || Math.abs(dr) === Math.abs(dc))) return null;
+    const n = Math.max(Math.abs(dr), Math.abs(dc)), sr = Math.sign(dr), sc = Math.sign(dc), out = [];
+    for (let k = 0; k <= n; k++) out.push((ar + sr*k)*C + ac + sc*k);
+    return out;
+  }
+  function mark(list, cls){ for (const el of cellsEl.children) el.classList.toggle(cls, list.includes(+el.dataset.i)); }
+  let down = -1, busy = false;
+  board.addEventListener('pointerdown', e => {
+    if (busy || !G || G.over) return;
+    wakeAudio();
+    down = cellAt(e.clientX, e.clientY);
+    if (down < 0) return;
+    try { board.setPointerCapture(e.pointerId); } catch(err){}
+    if (anchor < 0) mark([down], 'sel');
+  });
+  board.addEventListener('pointermove', e => {
+    if (down < 0) return;
+    const c = cellAt(e.clientX, e.clientY);
+    if (c >= 0 && c !== down){ const l = lineCells(down, c); mark(l || [], 'path'); }
+  });
+  board.addEventListener('pointerup', e => {
+    if (down < 0) return;
+    const up = cellAt(e.clientX, e.clientY), d = down; down = -1;
+    mark([], 'path');
+    if (up >= 0 && up !== d){ anchor = -1; mark([], 'sel'); tryLine(d, up); return; }   // 쭉 그었을 때
+    if (anchor < 0){ anchor = d; mark([d], 'sel'); beep(520, .04); return; }            // 첫 글자
+    if (anchor === d){ anchor = -1; mark([], 'sel'); return; }                          // 같은 글자 다시 → 취소
+    const a = anchor; anchor = -1; mark([], 'sel'); tryLine(a, d);                      // 마지막 글자
+  });
+  board.addEventListener('pointercancel', () => { down = -1; mark([], 'path'); });
+  function tryLine(a, b){
+    const l = lineCells(a, b);
+    if (!l){ anchor = b; mark([b], 'sel'); beep(520, .04); return; } // 한 줄이 아니면 나중 글자부터 다시
+    const pz = G.pz, same = (x, y) => x.length === y.length && x.every((v, i) => v === y[i]);
+    const k = pz.words.findIndex(w => !w.found && (same(w.cells, l) || same(w.cells, [...l].reverse())));
+    if (k >= 0){
+      pz.words[k].found = true;
+      if (G.hint && G.hint.w === k) G.hint = null;
+      [659, 880].forEach((f, i) => setTimeout(() => beep(f, .14), i*120));
+      syncWords(); save();
+      if (pz.words.every(w => w.found)) solved();
+    } else {
+      busy = true; mark(l, 'wrong'); beep(220, .15);
+      setTimeout(() => { mark([], 'wrong'); busy = false; }, 650);
+    }
+  }
+  function solved(){
+    busy = true;
+    const ch = $('#cheer'); ch.textContent = pick(['잘하셨어요!', '훌륭해요!', '다 찾았어요!']); ch.hidden = false;
+    setTimeout(() => { ch.hidden = true; busy = false; nextProblem(); }, 1700);
+  }
+
+  // 찾은 낱말 위에 색 띠
+  function drawBands(){
+    bandsEl.textContent = '';
+    if (!G || !G.pz) return;
+    const pz = G.pz, cs = board.clientWidth/pz.cols;
+    pz.words.forEach((w, k) => {
+      if (!w.found) return;
+      const a = w.cells[0], b = w.cells[w.cells.length - 1], C = pz.cols;
+      const x1 = (a % C + .5)*cs, y1 = (Math.floor(a/C) + .5)*cs, x2 = (b % C + .5)*cs, y2 = (Math.floor(b/C) + .5)*cs;
+      const len = Math.hypot(x2 - x1, y2 - y1), th = cs*.74, ang = Math.atan2(y2 - y1, x2 - x1);
+      const d = document.createElement('div'); d.className = 'band';
+      d.style.cssText = `left:${(x1 + x2)/2 - (len + th)/2}px;top:${(y1 + y2)/2 - th/2}px;width:${len + th}px;height:${th}px;background:${BAND[k % BAND.length]};transform:rotate(${ang}rad)`;
+      bandsEl.appendChild(d);
+    });
+  }
+
+  // ---------- 힌트: 누를 때마다 더 많이 (첫 글자 반짝 → 낱말 전체 반짝·글자 보이기) ----------
+  $('#hint').addEventListener('click', () => {
+    if (!G || G.over || busy) return;
+    wakeAudio();
+    const pz = G.pz, k = pz.words.findIndex(w => !w.found);
+    if (k < 0) return;
+    if (!G.hint || G.hint.w !== k) G.hint = { w: k, step: 0 };
+    G.hint.step = Math.min(2, G.hint.step + 1); G.hints++;
+    const w = pz.words[k], cells = G.hint.step === 1 ? [w.cells[0]] : w.cells;
+    for (const el of cellsEl.children){ el.classList.remove('flash'); }
+    void cellsEl.offsetWidth;
+    for (const i of cells) cellsEl.children[i].classList.add('flash');
+    setTimeout(() => { for (const i of cells) cellsEl.children[i] && cellsEl.children[i].classList.remove('flash'); }, 3800);
+    beep(740, .08);
+    syncWords(); save();
+  });
+
+  // ---------- 화면 배치 ----------
+  function layout(){
+    const W = stage.clientWidth, H = stage.clientHeight;
+    const sp = Math.round(Math.min(300, Math.max(210, W*.22)));
+    stage.style.setProperty('--sp', sp + 'px');
+    if (!G || !G.pz) return;
+    const pz = G.pz, top = 80, pad = 18, aw = W - sp - 2*pad, ah = H - top - pad;
+    const cs = Math.floor(Math.min(aw/pz.cols, ah/pz.rows));
+    board.style.width = (cs*pz.cols + 8) + 'px'; board.style.height = (cs*pz.rows + 8) + 'px';
+    board.style.left = Math.round(pad + (aw - cs*pz.cols)/2) + 'px';
+    board.style.top = Math.round(top + (ah - cs*pz.rows)/2) + 'px';
+    cellsEl.style.setProperty('--cs', cs + 'px');
+    cellsEl.style.gridAutoRows = cs + 'px';
+    // 찾을 낱말 칸 크기: 낱말 수·글자 수에 맞게
+    const most = Math.max(...pz.words.map(w => w.w.length));
+    const ws = Math.floor(Math.min(52, (sp - 24 - (most - 1)*5)/most, (H - 54 - 60 - 40 - 90 - pz.words.length*10)/pz.words.length));
+    $('#words').style.setProperty('--ws', ws + 'px');
+    drawBands();
+  }
+
+  // ---------- 저장 (껐다 켜도 이어서) ----------
+  function save(){ if (G) store.set(KEY, JSON.stringify({ v: 1, level: prefs.level, at: G.at, hints: G.hints, over: !!G.over, pz: G.pz, hint: G.hint || null })); }
+  function restore(){
+    try {
+      const s = JSON.parse(store.get(KEY) || 'null');
+      if (!s || s.v !== 1 || s.over || !s.pz || s.level !== prefs.level || !Array.isArray(s.pz.grid)) return false;
+      G = { at: s.at, hints: s.hints || 0, pz: s.pz, hint: s.hint };
+      show(); return true;
+    } catch(e){ return false; }
+  }
+
+  // ---------- 소리 ----------
+  let ac = null;
+  function wakeAudio(){
+    try { ac = ac || new (window.AudioContext || window.webkitAudioContext)(); if (ac.state === 'suspended') ac.resume(); } catch(e){}
+  }
+  function beep(freq, dur){
+    if (!prefs.sound || !ac) return;
+    try {
+      const o = ac.createOscillator(), g = ac.createGain(), t = ac.currentTime;
+      o.type = 'triangle'; o.frequency.value = freq;
+      g.gain.setValueAtTime(.0001, t);
+      g.gain.exponentialRampToValueAtTime(.22, t + .006);
+      g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+      o.connect(g).connect(ac.destination); o.start(t); o.stop(t + dur + .02);
+    } catch(e){}
+  }
+
+  // ---------- 설정 ----------
+  const toggle = (btn, on) => btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  function syncSeg(){ for (const b of $('#level').querySelectorAll('[data-v]')) toggle(b, +b.dataset.v === prefs.level); }
+  $('#level').addEventListener('click', e => {
+    const b = e.target.closest('[data-v]');
+    if (!b || +b.dataset.v === prefs.level) return;
+    prefs.level = +b.dataset.v; savePrefs(); syncSeg(); newRound();
+  });
+  $('#sound').addEventListener('click', e => { prefs.sound = !prefs.sound; savePrefs(); toggle(e.currentTarget, prefs.sound); if (prefs.sound){ wakeAudio(); beep(660, .08); } });
+  $('#again').addEventListener('click', newRound);
+  $('#doneAgain').addEventListener('click', newRound);
+  $('#gear').addEventListener('click', () => { $('#menu').hidden = false; });
+  $('#menuClose').addEventListener('click', () => { $('#menu').hidden = true; });
+  const fullBtn = $('#full'), fsEl = document.documentElement;
+  if (!(fsEl.requestFullscreen || fsEl.webkitRequestFullscreen)) fullBtn.hidden = true;
+  fullBtn.addEventListener('click', () => {
+    try {
+      if (document.fullscreenElement || document.webkitFullscreenElement) (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+      else { const r = (fsEl.requestFullscreen || fsEl.webkitRequestFullscreen).call(fsEl); if (r && r.catch) r.catch(() => {}); }
+    } catch(e){}
+    $('#menu').hidden = true;
+  });
+
+  toggle($('#sound'), prefs.sound); syncSeg();
+  new ResizeObserver(layout).observe(stage);
+  if (!restore()) newRound();
+  window.__word = { makePuzzle, WORDS, get G(){ return G; } }; // 점검용
+})();
+</script>
+
+<script>
+  if (matchMedia('(display-mode: fullscreen), (display-mode: standalone)').matches){ const b = document.getElementById('full'); if (b) b.hidden = true; }
+  if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+</script>
+</body>
+</html>
